@@ -1,0 +1,1147 @@
+-- ============================================================
+-- NyxUI Library v0.1
+-- ScreenGui tabanli Roblox GUI kutuphanesi
+-- ============================================================
+
+local NyxUI = {}
+NyxUI.__index = NyxUI
+
+-- ============================================================
+-- Servisler
+-- ============================================================
+
+local Players        = game:GetService("Players")
+local TweenService   = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local RunService     = game:GetService("RunService")
+local HttpService    = game:GetService("HttpService")
+
+local LP = Players.LocalPlayer
+local Mouse = LP:GetMouse()
+
+-- ============================================================
+-- Yardimci Fonksiyonlar
+-- ============================================================
+
+local function tween(obj, props, duration, style, direction)
+    style     = style     or Enum.EasingStyle.Quart
+    direction = direction or Enum.EasingDirection.Out
+    local ti  = TweenInfo.new(duration, style, direction)
+    local tw  = TweenService:Create(obj, ti, props)
+    tw:Play()
+    return tw
+end
+
+local function make(class, props, parent)
+    local obj = Instance.new(class)
+    for k, v in pairs(props) do
+        obj[k] = v
+    end
+    if parent then obj.Parent = parent end
+    return obj
+end
+
+local function lerp(a, b, t) return a + (b - a) * t end
+
+-- ============================================================
+-- Tema
+-- ============================================================
+
+local Theme = {
+    BG          = Color3.fromRGB(14, 14, 22),
+    BG2         = Color3.fromRGB(11, 11, 19),
+    BG3         = Color3.fromRGB(13, 13, 24),
+    Border      = Color3.fromRGB(30, 30, 46),
+    Border2     = Color3.fromRGB(24, 24, 42),
+    Accent      = Color3.fromRGB(124, 106, 255),
+    AccentLight = Color3.fromRGB(167, 139, 250),
+    Text        = Color3.fromRGB(136, 136, 176),
+    TextDim     = Color3.fromRGB(58, 58, 90),
+    TextBright  = Color3.fromRGB(226, 226, 240),
+    Success     = Color3.fromRGB(40, 200, 64),
+    Warning     = Color3.fromRGB(254, 188, 46),
+    Error       = Color3.fromRGB(255, 95, 87),
+    White       = Color3.fromRGB(255, 255, 255),
+}
+
+-- ============================================================
+-- ScreenGui Kurulumu
+-- ============================================================
+
+local function setupGui()
+    -- Eski varsa temizle
+    local existing = LP.PlayerGui:FindFirstChild("NyxUI")
+    if existing then existing:Destroy() end
+
+    local gui = make("ScreenGui", {
+        Name              = "NyxUI",
+        ResetOnSpawn      = false,
+        ZIndexBehavior    = Enum.ZIndexBehavior.Sibling,
+        IgnoreGuiInset    = true,
+    }, LP.PlayerGui)
+
+    return gui
+end
+
+-- ============================================================
+-- Dragging (basili tutarak surukle)
+-- ============================================================
+
+local function makeDraggable(handle, target)
+    local dragging = false
+    local dragStart, startPos
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging  = true
+            dragStart = input.Position
+            startPos  = target.Position
+        end
+    end)
+
+    handle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (
+            input.UserInputType == Enum.UserInputType.MouseMovement or
+            input.UserInputType == Enum.UserInputType.Touch
+        ) then
+            local delta = input.Position - dragStart
+            target.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+-- ============================================================
+-- Resizing (sag alt kose, basili tutarak)
+-- ============================================================
+
+local function makeResizable(handle, target, minW, minH)
+    local resizing = false
+    local startMouse, startSize
+
+    handle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            resizing   = true
+            startMouse = Vector2.new(input.Position.X, input.Position.Y)
+            startSize  = Vector2.new(target.AbsoluteSize.X, target.AbsoluteSize.Y)
+        end
+    end)
+
+    handle.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            resizing = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if resizing and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = Vector2.new(input.Position.X, input.Position.Y) - startMouse
+            local nw    = math.max(minW, startSize.X + delta.X)
+            local nh    = math.max(minH, startSize.Y + delta.Y)
+            target.Size = UDim2.new(0, nw, 0, nh)
+        end
+    end)
+end
+
+-- ============================================================
+-- PENCERE
+-- ============================================================
+
+function NyxUI:Window(title, version)
+    local gui = setupGui()
+
+    -- Ana frame
+    local win = make("Frame", {
+        Name            = "Window",
+        Size            = UDim2.new(0, 560, 0, 400),
+        Position        = UDim2.new(0.5, -280, 0.5, -200),
+        BackgroundColor3 = Theme.BG,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, gui)
+    make("UICorner",  { CornerRadius = UDim.new(0, 10) }, win)
+    make("UIStroke",  { Color = Theme.Border, Thickness = 1 }, win)
+
+    -- Giris animasyonu
+    win.Size     = UDim2.new(0, 560, 0, 0)
+    win.BackgroundTransparency = 1
+    tween(win, { Size = UDim2.new(0, 560, 0, 400), BackgroundTransparency = 0 }, 0.35, Enum.EasingStyle.Back)
+
+    -- ======================================================
+    -- TITLEBAR
+    -- ======================================================
+    local titlebar = make("Frame", {
+        Name            = "Titlebar",
+        Size            = UDim2.new(1, 0, 0, 44),
+        BackgroundColor3 = Theme.BG2,
+        BorderSizePixel = 0,
+        ZIndex          = 2,
+    }, win)
+    make("UIStroke", { Color = Theme.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, titlebar)
+
+    -- Logo
+    local logo = make("Frame", {
+        Size            = UDim2.new(0, 22, 0, 22),
+        Position        = UDim2.new(0, 12, 0.5, -11),
+        BackgroundColor3 = Theme.Accent,
+        BorderSizePixel = 0,
+    }, titlebar)
+    make("UICorner", { CornerRadius = UDim.new(0, 5) }, logo)
+    make("UIGradient", { Color = ColorSequence.new(Theme.Accent, Theme.AccentLight), Rotation = 135 }, logo)
+    make("TextLabel", {
+        Size = UDim2.new(1,0,1,0),
+        BackgroundTransparency = 1,
+        Text = "N",
+        TextColor3 = Theme.White,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+    }, logo)
+
+    -- Başlık
+    make("TextLabel", {
+        Size            = UDim2.new(0, 200, 1, 0),
+        Position        = UDim2.new(0, 42, 0, 0),
+        BackgroundTransparency = 1,
+        Text            = title,
+        TextColor3      = Theme.TextBright,
+        Font            = Enum.Font.GothamBold,
+        TextSize        = 13,
+        TextXAlignment  = Enum.TextXAlignment.Left,
+    }, titlebar)
+
+    -- Versiyon
+    make("TextLabel", {
+        Size            = UDim2.new(0, 60, 1, 0),
+        Position        = UDim2.new(0, 42 + 200, 0, 0),
+        BackgroundTransparency = 1,
+        Text            = version or "",
+        TextColor3      = Theme.TextDim,
+        Font            = Enum.Font.Code,
+        TextSize        = 11,
+        TextXAlignment  = Enum.TextXAlignment.Left,
+    }, titlebar)
+
+    -- Pencere kontrolleri
+    local ctrlFrame = make("Frame", {
+        Size            = UDim2.new(0, 60, 0, 24),
+        Position        = UDim2.new(1, -70, 0.5, -12),
+        BackgroundTransparency = 1,
+    }, titlebar)
+    make("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0,6), VerticalAlignment = Enum.VerticalAlignment.Center }, ctrlFrame)
+
+    -- Mini butonu
+    local miniBtn = make("TextButton", {
+        Size            = UDim2.new(0, 24, 0, 24),
+        BackgroundColor3 = Theme.Warning,
+        BorderSizePixel = 0,
+        Text            = "−",
+        TextColor3      = Color3.fromRGB(0,0,0),
+        Font            = Enum.Font.GothamBold,
+        TextSize        = 14,
+        AutoButtonColor = false,
+    }, ctrlFrame)
+    make("UICorner", { CornerRadius = UDim.new(0, 6) }, miniBtn)
+
+    -- Kapat butonu
+    local closeBtn = make("TextButton", {
+        Size            = UDim2.new(0, 24, 0, 24),
+        BackgroundColor3 = Theme.Error,
+        BorderSizePixel = 0,
+        Text            = "✕",
+        TextColor3      = Color3.fromRGB(0,0,0),
+        Font            = Enum.Font.GothamBold,
+        TextSize        = 12,
+        AutoButtonColor = false,
+    }, ctrlFrame)
+    make("UICorner", { CornerRadius = UDim.new(0, 6) }, closeBtn)
+
+    -- Hover animasyonları
+    for _, btn in ipairs({miniBtn, closeBtn}) do
+        btn.MouseEnter:Connect(function()
+            tween(btn, { BackgroundTransparency = 0.25 }, 0.12)
+        end)
+        btn.MouseLeave:Connect(function()
+            tween(btn, { BackgroundTransparency = 0 }, 0.12)
+        end)
+        btn.MouseButton1Down:Connect(function()
+            tween(btn, { Size = UDim2.new(0,20,0,20) }, 0.08, Enum.EasingStyle.Quad)
+        end)
+        btn.MouseButton1Up:Connect(function()
+            tween(btn, { Size = UDim2.new(0,24,0,24) }, 0.12, Enum.EasingStyle.Back)
+        end)
+    end
+
+    -- Minimize
+    local minimized = false
+    local bodyFrame -- sonra set edilecek
+    miniBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then
+            tween(win, { Size = UDim2.new(0, 560, 0, 44) }, 0.25, Enum.EasingStyle.Quart)
+        else
+            tween(win, { Size = UDim2.new(0, 560, 0, 400) }, 0.3, Enum.EasingStyle.Back)
+        end
+    end)
+
+    -- Kapat
+    closeBtn.MouseButton1Click:Connect(function()
+        tween(win, { Size = UDim2.new(0, 560, 0, 0), BackgroundTransparency = 1 }, 0.25, Enum.EasingStyle.Quart)
+        task.delay(0.3, function() gui:Destroy() end)
+    end)
+
+    -- Drag
+    makeDraggable(titlebar, win)
+
+    -- ======================================================
+    -- TAB BARI
+    -- ======================================================
+    local tabbar = make("Frame", {
+        Name            = "Tabbar",
+        Size            = UDim2.new(1, 0, 0, 36),
+        Position        = UDim2.new(0, 0, 0, 44),
+        BackgroundColor3 = Theme.BG2,
+        BorderSizePixel = 0,
+    }, win)
+    make("UIStroke", { Color = Theme.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, tabbar)
+    local tabLayout = make("UIListLayout", {
+        FillDirection   = Enum.FillDirection.Horizontal,
+        Padding         = UDim.new(0, 2),
+        VerticalAlignment = Enum.VerticalAlignment.Bottom,
+    }, tabbar)
+    make("UIPadding", { PaddingLeft = UDim.new(0,4) }, tabbar)
+
+    -- ======================================================
+    -- GÖVDE (sidebar + içerik)
+    -- ======================================================
+    local body = make("Frame", {
+        Name            = "Body",
+        Size            = UDim2.new(1, 0, 1, -80),
+        Position        = UDim2.new(0, 0, 0, 80),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, win)
+    bodyFrame = body
+
+    -- ======================================================
+    -- SIDEBAR
+    -- ======================================================
+    local sidebar = make("Frame", {
+        Name            = "Sidebar",
+        Size            = UDim2.new(0, 112, 1, 0),
+        BackgroundColor3 = Theme.BG2,
+        BorderSizePixel = 0,
+    }, body)
+    make("UIStroke", { Color = Theme.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, sidebar)
+    local sideLayout = make("UIListLayout", {
+        FillDirection   = Enum.FillDirection.Vertical,
+        Padding         = UDim.new(0, 6),
+        SortOrder       = Enum.SortOrder.LayoutOrder,
+    }, sidebar)
+    make("UIPadding", { PaddingLeft=UDim.new(0,8), PaddingRight=UDim.new(0,8), PaddingTop=UDim.new(0,10) }, sidebar)
+
+    -- ======================================================
+    -- İÇERİK ALANI
+    -- ======================================================
+    local contentArea = make("Frame", {
+        Name            = "ContentArea",
+        Size            = UDim2.new(1, -112, 1, 0),
+        Position        = UDim2.new(0, 112, 0, 0),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+    }, body)
+
+    -- ======================================================
+    -- RESIZE BUTONU
+    -- ======================================================
+    local resizeBtn = make("TextButton", {
+        Name            = "ResizeBtn",
+        Size            = UDim2.new(0, 18, 0, 18),
+        Position        = UDim2.new(1, -20, 1, -20),
+        BackgroundTransparency = 1,
+        Text            = "⌟",
+        TextColor3      = Theme.AccentLight,
+        Font            = Enum.Font.GothamBold,
+        TextSize        = 14,
+        TextTransparency = 0.6,
+        ZIndex          = 10,
+        AutoButtonColor = false,
+    }, win)
+    resizeBtn.MouseEnter:Connect(function()
+        tween(resizeBtn, { TextTransparency = 0 }, 0.15)
+    end)
+    resizeBtn.MouseLeave:Connect(function()
+        tween(resizeBtn, { TextTransparency = 0.6 }, 0.15)
+    end)
+    makeResizable(resizeBtn, win, 380, 260)
+
+    -- ======================================================
+    -- BİLDİRİM SİSTEMİ
+    -- ======================================================
+    local notifContainer = make("Frame", {
+        Name            = "NotifContainer",
+        Size            = UDim2.new(0, 260, 1, 0),
+        Position        = UDim2.new(1, -270, 0, 10),
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex          = 100,
+    }, gui)
+    make("UIListLayout", {
+        FillDirection   = Enum.FillDirection.Vertical,
+        Padding         = UDim.new(0, 8),
+        VerticalAlignment = Enum.VerticalAlignment.Bottom,
+        SortOrder       = Enum.SortOrder.LayoutOrder,
+    }, notifContainer)
+
+    -- ======================================================
+    -- TAB YÖNETİMİ
+    -- ======================================================
+    local tabs       = {}
+    local activeTab  = nil
+
+    local function switchTab(tabObj)
+        if activeTab == tabObj then return end
+        -- Eski tab içeriğini gizle
+        if activeTab then
+            tween(activeTab.content, { Position = UDim2.new(-1, 0, 0, 0), BackgroundTransparency = 1 }, 0.2, Enum.EasingStyle.Quart)
+            activeTab.btn.TextColor3 = Theme.TextDim
+            if activeTab.indicator then
+                tween(activeTab.indicator, { BackgroundTransparency = 1 }, 0.15)
+            end
+        end
+        -- Yeni tab içeriğini göster
+        activeTab = tabObj
+        tabObj.content.Position = UDim2.new(1, 0, 0, 0)
+        tween(tabObj.content, { Position = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1 }, 0.22, Enum.EasingStyle.Quart)
+        tween(tabObj.btn, { TextColor3 = Theme.AccentLight }, 0.15)
+        if tabObj.indicator then
+            tween(tabObj.indicator, { BackgroundTransparency = 0 }, 0.15)
+        end
+    end
+
+    -- ======================================================
+    -- WINDOW OBJESİ
+    -- ======================================================
+    local winObj = {}
+
+    -- Tab ekle
+    function winObj:Tab(name)
+        local btn = make("TextButton", {
+            Size            = UDim2.new(0, 0, 0, 32),
+            AutomaticSize   = Enum.AutomaticSize.X,
+            BackgroundTransparency = 1,
+            Text            = name,
+            TextColor3      = Theme.TextDim,
+            Font            = Enum.Font.GothamSemibold,
+            TextSize        = 12,
+            BorderSizePixel = 0,
+            AutoButtonColor = false,
+        }, tabbar)
+        make("UIPadding", { PaddingLeft=UDim.new(0,14), PaddingRight=UDim.new(0,14) }, btn)
+
+        -- Aktif göstergesi (üst çizgi)
+        local indicator = make("Frame", {
+            Size            = UDim2.new(1, 0, 0, 2),
+            Position        = UDim2.new(0, 0, 0, 0),
+            BackgroundColor3 = Theme.AccentLight,
+            BorderSizePixel = 0,
+            BackgroundTransparency = 1,
+        }, btn)
+        make("UICorner", { CornerRadius = UDim.new(0, 2) }, indicator)
+        make("UIGradient", { Color = ColorSequence.new(Theme.Accent, Theme.AccentLight), Rotation = 90 }, indicator)
+
+        -- İçerik scroll frame
+        local content = make("ScrollingFrame", {
+            Size            = UDim2.new(1, 0, 1, 0),
+            Position        = UDim2.new(1, 0, 0, 0),
+            BackgroundTransparency = 1,
+            BorderSizePixel = 0,
+            ScrollBarThickness = 3,
+            ScrollBarImageColor3 = Theme.TextDim,
+            CanvasSize      = UDim2.new(0, 0, 0, 0),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y,
+            ClipsDescendants = true,
+        }, contentArea)
+        make("UIListLayout", {
+            FillDirection   = Enum.FillDirection.Vertical,
+            Padding         = UDim.new(0, 6),
+            SortOrder       = Enum.SortOrder.LayoutOrder,
+        }, content)
+        make("UIPadding", { PaddingLeft=UDim.new(0,10), PaddingRight=UDim.new(0,10), PaddingTop=UDim.new(0,10), PaddingBottom=UDim.new(0,10) }, content)
+
+        local tabObj = { btn = btn, content = content, indicator = indicator }
+        table.insert(tabs, tabObj)
+
+        btn.MouseButton1Click:Connect(function()
+            switchTab(tabObj)
+        end)
+
+        btn.MouseEnter:Connect(function()
+            if activeTab ~= tabObj then
+                tween(btn, { TextColor3 = Theme.Text }, 0.12)
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if activeTab ~= tabObj then
+                tween(btn, { TextColor3 = Theme.TextDim }, 0.12)
+            end
+        end)
+
+        -- İlk tab otomatik aktif
+        if #tabs == 1 then
+            switchTab(tabObj)
+        end
+
+        -- ======================================================
+        -- SECTION
+        -- ======================================================
+        local tabContent = content
+        local sectionObj = {}
+
+        function sectionObj:Section(sectionName)
+            local sec = make("TextLabel", {
+                Size            = UDim2.new(1, 0, 0, 22),
+                BackgroundTransparency = 1,
+                Text            = sectionName:upper(),
+                TextColor3      = Theme.TextDim,
+                Font            = Enum.Font.Code,
+                TextSize        = 9,
+                TextXAlignment  = Enum.TextXAlignment.Left,
+                BorderSizePixel = 0,
+            }, tabContent)
+            make("UIStroke", { Color = Theme.Border2, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }, sec)
+
+            local itemObj = {}
+
+            -- ================================================
+            -- TOGGLE
+            -- ================================================
+            function itemObj:Toggle(label, default, callback)
+                local state = default or false
+
+                local row = make("TextButton", {
+                    Size            = UDim2.new(1, 0, 0, 34),
+                    BackgroundColor3 = Theme.BG3,
+                    BorderSizePixel = 0,
+                    Text            = "",
+                    AutoButtonColor = false,
+                }, tabContent)
+                make("UICorner", { CornerRadius = UDim.new(0, 7) }, row)
+                make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, row)
+
+                make("TextLabel", {
+                    Size            = UDim2.new(1, -52, 1, 0),
+                    Position        = UDim2.new(0, 12, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = label,
+                    TextColor3      = Theme.Text,
+                    Font            = Enum.Font.GothamSemibold,
+                    TextSize        = 12,
+                    TextXAlignment  = Enum.TextXAlignment.Left,
+                }, row)
+
+                local track = make("Frame", {
+                    Size            = UDim2.new(0, 32, 0, 17),
+                    Position        = UDim2.new(1, -44, 0.5, -8),
+                    BackgroundColor3 = state and Theme.Accent or Color3.fromRGB(26, 26, 46),
+                    BorderSizePixel = 0,
+                }, row)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, track)
+
+                local knob = make("Frame", {
+                    Size            = UDim2.new(0, 11, 0, 11),
+                    Position        = state and UDim2.new(0, 18, 0.5, -5) or UDim2.new(0, 3, 0.5, -5),
+                    BackgroundColor3 = Theme.White,
+                    BorderSizePixel = 0,
+                }, track)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, knob)
+
+                local function setState(v, silent)
+                    state = v
+                    tween(track, { BackgroundColor3 = v and Theme.Accent or Color3.fromRGB(26,26,46) }, 0.18)
+                    tween(knob,  { Position = v and UDim2.new(0,18,0.5,-5) or UDim2.new(0,3,0.5,-5) }, 0.18)
+                    if not silent and callback then callback(v) end
+                end
+
+                row.MouseButton1Click:Connect(function()
+                    setState(not state)
+                    tween(row, { BackgroundColor3 = Color3.fromRGB(16,16,28) }, 0.08)
+                    task.delay(0.08, function()
+                        tween(row, { BackgroundColor3 = Theme.BG3 }, 0.15)
+                    end)
+                end)
+
+                row.MouseEnter:Connect(function()
+                    tween(row, { BackgroundColor3 = Color3.fromRGB(15,15,26) }, 0.12)
+                end)
+                row.MouseLeave:Connect(function()
+                    tween(row, { BackgroundColor3 = Theme.BG3 }, 0.12)
+                end)
+
+                local toggleCtrl = {}
+                function toggleCtrl:Set(v) setState(v, false) end
+                function toggleCtrl:Get() return state end
+                return toggleCtrl
+            end
+
+            -- ================================================
+            -- SLIDER
+            -- ================================================
+            function itemObj:Slider(label, min, max, default, suffix, callback)
+                suffix = suffix or ""
+                local value = math.clamp(default or min, min, max)
+
+                local row = make("Frame", {
+                    Size            = UDim2.new(1, 0, 0, 50),
+                    BackgroundColor3 = Theme.BG3,
+                    BorderSizePixel = 0,
+                }, tabContent)
+                make("UICorner", { CornerRadius = UDim.new(0, 7) }, row)
+                make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, row)
+
+                make("TextLabel", {
+                    Size            = UDim2.new(1, -60, 0, 24),
+                    Position        = UDim2.new(0, 12, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = label,
+                    TextColor3      = Theme.Text,
+                    Font            = Enum.Font.GothamSemibold,
+                    TextSize        = 12,
+                    TextXAlignment  = Enum.TextXAlignment.Left,
+                }, row)
+
+                local valLabel = make("TextLabel", {
+                    Size            = UDim2.new(0, 56, 0, 24),
+                    Position        = UDim2.new(1, -68, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = tostring(value) .. suffix,
+                    TextColor3      = Theme.AccentLight,
+                    Font            = Enum.Font.Code,
+                    TextSize        = 11,
+                    TextXAlignment  = Enum.TextXAlignment.Right,
+                }, row)
+
+                local trackBG = make("Frame", {
+                    Size            = UDim2.new(1, -24, 0, 3),
+                    Position        = UDim2.new(0, 12, 1, -14),
+                    BackgroundColor3 = Color3.fromRGB(26, 26, 46),
+                    BorderSizePixel = 0,
+                }, row)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, trackBG)
+
+                local fill = make("Frame", {
+                    Size            = UDim2.new((value - min) / (max - min), 0, 1, 0),
+                    BackgroundColor3 = Theme.Accent,
+                    BorderSizePixel = 0,
+                }, trackBG)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, fill)
+                make("UIGradient", { Color = ColorSequence.new(Theme.Accent, Theme.AccentLight), Rotation = 0 }, fill)
+
+                local thumb = make("Frame", {
+                    Size            = UDim2.new(0, 12, 0, 12),
+                    Position        = UDim2.new((value - min)/(max-min), -6, 0.5, -6),
+                    BackgroundColor3 = Theme.AccentLight,
+                    BorderSizePixel = 0,
+                    ZIndex          = 2,
+                }, trackBG)
+                make("UICorner", { CornerRadius = UDim.new(1, 0) }, thumb)
+
+                local draggingSlider = false
+
+                local function updateSlider(inputX)
+                    local rel   = math.clamp((inputX - trackBG.AbsolutePosition.X) / trackBG.AbsoluteSize.X, 0, 1)
+                    local newVal = math.floor(min + (max - min) * rel)
+                    value = newVal
+                    fill.Size     = UDim2.new(rel, 0, 1, 0)
+                    thumb.Position = UDim2.new(rel, -6, 0.5, -6)
+                    valLabel.Text  = tostring(newVal) .. suffix
+                    if callback then callback(newVal) end
+                end
+
+                trackBG.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        draggingSlider = true
+                        updateSlider(input.Position.X)
+                    end
+                end)
+                UserInputService.InputChanged:Connect(function(input)
+                    if draggingSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        updateSlider(input.Position.X)
+                    end
+                end)
+                UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        draggingSlider = false
+                    end
+                end)
+
+                local sliderCtrl = {}
+                function sliderCtrl:Set(v)
+                    value = math.clamp(v, min, max)
+                    local rel = (value - min)/(max - min)
+                    fill.Size      = UDim2.new(rel, 0, 1, 0)
+                    thumb.Position = UDim2.new(rel, -6, 0.5, -6)
+                    valLabel.Text  = tostring(value) .. suffix
+                end
+                function sliderCtrl:Get() return value end
+                return sliderCtrl
+            end
+
+            -- ================================================
+            -- BUTTON
+            -- ================================================
+            function itemObj:Button(label, callback)
+                local btn = make("TextButton", {
+                    Size            = UDim2.new(1, 0, 0, 34),
+                    BackgroundColor3 = Theme.BG3,
+                    BorderSizePixel = 0,
+                    Text            = label,
+                    TextColor3      = Theme.Text,
+                    Font            = Enum.Font.GothamSemibold,
+                    TextSize        = 12,
+                    AutoButtonColor = false,
+                }, tabContent)
+                make("UICorner", { CornerRadius = UDim.new(0, 7) }, btn)
+                make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, btn)
+
+                btn.MouseEnter:Connect(function()
+                    tween(btn, { BackgroundColor3 = Color3.fromRGB(15,15,28), TextColor3 = Theme.AccentLight }, 0.15)
+                end)
+                btn.MouseLeave:Connect(function()
+                    tween(btn, { BackgroundColor3 = Theme.BG3, TextColor3 = Theme.Text }, 0.15)
+                end)
+                btn.MouseButton1Down:Connect(function()
+                    tween(btn, { BackgroundColor3 = Color3.fromRGB(20,16,40) }, 0.08)
+                end)
+                btn.MouseButton1Up:Connect(function()
+                    tween(btn, { BackgroundColor3 = Color3.fromRGB(15,15,28) }, 0.12)
+                end)
+                btn.MouseButton1Click:Connect(function()
+                    if callback then callback() end
+                end)
+            end
+
+            -- ================================================
+            -- DROPDOWN
+            -- ================================================
+            function itemObj:Dropdown(label, options, default, callback)
+                local selected = default or options[1]
+                local open     = false
+
+                local container = make("Frame", {
+                    Size            = UDim2.new(1, 0, 0, 34),
+                    BackgroundTransparency = 1,
+                    BorderSizePixel = 0,
+                    ClipsDescendants = false,
+                    ZIndex          = 5,
+                }, tabContent)
+
+                local row = make("TextButton", {
+                    Size            = UDim2.new(1, 0, 0, 34),
+                    BackgroundColor3 = Theme.BG3,
+                    BorderSizePixel = 0,
+                    Text            = "",
+                    AutoButtonColor = false,
+                    ZIndex          = 5,
+                }, container)
+                make("UICorner", { CornerRadius = UDim.new(0, 7) }, row)
+                make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, row)
+
+                make("TextLabel", {
+                    Size            = UDim2.new(0.5, 0, 1, 0),
+                    Position        = UDim2.new(0, 12, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = label,
+                    TextColor3      = Theme.Text,
+                    Font            = Enum.Font.GothamSemibold,
+                    TextSize        = 12,
+                    TextXAlignment  = Enum.TextXAlignment.Left,
+                    ZIndex          = 5,
+                }, row)
+
+                local valLbl = make("TextLabel", {
+                    Size            = UDim2.new(0.5, -30, 1, 0),
+                    Position        = UDim2.new(0.5, 0, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = selected,
+                    TextColor3      = Theme.TextDim,
+                    Font            = Enum.Font.Code,
+                    TextSize        = 11,
+                    TextXAlignment  = Enum.TextXAlignment.Right,
+                    ZIndex          = 5,
+                }, row)
+
+                local arrow = make("TextLabel", {
+                    Size            = UDim2.new(0, 20, 1, 0),
+                    Position        = UDim2.new(1, -24, 0, 0),
+                    BackgroundTransparency = 1,
+                    Text            = "▾",
+                    TextColor3      = Theme.TextDim,
+                    Font            = Enum.Font.GothamBold,
+                    TextSize        = 12,
+                    ZIndex          = 5,
+                }, row)
+
+                -- Dropdown listesi
+                local dropdown = make("Frame", {
+                    Size            = UDim2.new(1, 0, 0, 0),
+                    Position        = UDim2.new(0, 0, 1, 4),
+                    BackgroundColor3 = Color3.fromRGB(12, 12, 20),
+                    BorderSizePixel = 0,
+                    ClipsDescendants = true,
+                    ZIndex          = 20,
+                    Visible         = false,
+                }, container)
+                make("UICorner",  { CornerRadius = UDim.new(0, 7) }, dropdown)
+                make("UIStroke",  { Color = Theme.Border, Thickness = 1 }, dropdown)
+                make("UIListLayout", { Padding = UDim.new(0,2), SortOrder = Enum.SortOrder.LayoutOrder }, dropdown)
+                make("UIPadding", { PaddingLeft=UDim.new(0,6), PaddingRight=UDim.new(0,6), PaddingTop=UDim.new(0,6), PaddingBottom=UDim.new(0,6) }, dropdown)
+
+                local itemH = 28
+                for _, opt in ipairs(options) do
+                    local optBtn = make("TextButton", {
+                        Size            = UDim2.new(1, 0, 0, itemH),
+                        BackgroundTransparency = 1,
+                        Text            = opt,
+                        TextColor3      = opt == selected and Theme.AccentLight or Theme.Text,
+                        Font            = Enum.Font.GothamSemibold,
+                        TextSize        = 12,
+                        BorderSizePixel = 0,
+                        AutoButtonColor = false,
+                        ZIndex          = 21,
+                    }, dropdown)
+                    make("UICorner", { CornerRadius = UDim.new(0,5) }, optBtn)
+
+                    optBtn.MouseEnter:Connect(function()
+                        tween(optBtn, { BackgroundTransparency = 0.85, TextColor3 = Theme.AccentLight }, 0.1)
+                    end)
+                    optBtn.MouseLeave:Connect(function()
+                        tween(optBtn, { BackgroundTransparency = 1, TextColor3 = opt == selected and Theme.AccentLight or Theme.Text }, 0.1)
+                    end)
+                    optBtn.MouseButton1Click:Connect(function()
+                        selected    = opt
+                        valLbl.Text = opt
+                        if callback then callback(opt) end
+                        -- Kapat
+                        open = false
+                        tween(dropdown, { Size = UDim2.new(1,0,0,0) }, 0.18, Enum.EasingStyle.Quart)
+                        tween(arrow, { Rotation = 0 }, 0.18)
+                        task.delay(0.2, function() dropdown.Visible = false end)
+                        container.Size = UDim2.new(1,0,0,34)
+                    end)
+                end
+
+                local fullH = #options * (itemH + 2) + 14
+
+                row.MouseButton1Click:Connect(function()
+                    open = not open
+                    if open then
+                        dropdown.Visible = true
+                        dropdown.Size    = UDim2.new(1,0,0,0)
+                        tween(dropdown, { Size = UDim2.new(1,0,0,fullH) }, 0.22, Enum.EasingStyle.Back)
+                        tween(arrow, { Rotation = 180 }, 0.18)
+                        container.Size = UDim2.new(1,0,0,34 + fullH + 4)
+                    else
+                        tween(dropdown, { Size = UDim2.new(1,0,0,0) }, 0.18, Enum.EasingStyle.Quart)
+                        tween(arrow, { Rotation = 0 }, 0.18)
+                        task.delay(0.2, function() dropdown.Visible = false end)
+                        container.Size = UDim2.new(1,0,0,34)
+                    end
+                end)
+
+                row.MouseEnter:Connect(function()
+                    tween(row, { BackgroundColor3 = Color3.fromRGB(15,15,26) }, 0.12)
+                end)
+                row.MouseLeave:Connect(function()
+                    tween(row, { BackgroundColor3 = Theme.BG3 }, 0.12)
+                end)
+
+                local ddCtrl = {}
+                function ddCtrl:Get() return selected end
+                function ddCtrl:Set(v) selected = v; valLbl.Text = v end
+                return ddCtrl
+            end
+
+            -- ================================================
+            -- TEXTBOX
+            -- ================================================
+            function itemObj:TextBox(label, placeholder, callback)
+                local row = make("Frame", {
+                    Size            = UDim2.new(1, 0, 0, 52),
+                    BackgroundColor3 = Theme.BG3,
+                    BorderSizePixel = 0,
+                }, tabContent)
+                make("UICorner", { CornerRadius = UDim.new(0, 7) }, row)
+                make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, row)
+
+                make("TextLabel", {
+                    Size            = UDim2.new(1, -24, 0, 22),
+                    Position        = UDim2.new(0, 12, 0, 4),
+                    BackgroundTransparency = 1,
+                    Text            = label,
+                    TextColor3      = Theme.TextDim,
+                    Font            = Enum.Font.Code,
+                    TextSize        = 10,
+                    TextXAlignment  = Enum.TextXAlignment.Left,
+                }, row)
+
+                local input = make("TextBox", {
+                    Size            = UDim2.new(1, -24, 0, 22),
+                    Position        = UDim2.new(0, 12, 0, 24),
+                    BackgroundTransparency = 1,
+                    Text            = "",
+                    PlaceholderText = placeholder or "",
+                    PlaceholderColor3 = Theme.TextDim,
+                    TextColor3      = Theme.Text,
+                    Font            = Enum.Font.Code,
+                    TextSize        = 12,
+                    TextXAlignment  = Enum.TextXAlignment.Left,
+                    BorderSizePixel = 0,
+                    ClearTextOnFocus = false,
+                }, row)
+
+                input.Focused:Connect(function()
+                    tween(row, { BackgroundColor3 = Color3.fromRGB(15,15,26) }, 0.15)
+                end)
+                input.FocusLost:Connect(function(enter)
+                    tween(row, { BackgroundColor3 = Theme.BG3 }, 0.15)
+                    if callback then callback(input.Text, enter) end
+                end)
+
+                local tbCtrl = {}
+                function tbCtrl:Get() return input.Text end
+                function tbCtrl:Set(v) input.Text = v end
+                return tbCtrl
+            end
+
+            return itemObj
+        end
+
+        return sectionObj
+    end
+
+    -- ======================================================
+    -- SIDEBAR METODLARI
+    -- ======================================================
+    local sideObj = {}
+
+    function winObj:Sidebar()
+        function sideObj:Label(title, sub)
+            local item = make("Frame", {
+                Size            = UDim2.new(1, 0, 0, 46),
+                BackgroundColor3 = Color3.fromRGB(14, 14, 24),
+                BorderSizePixel = 0,
+            }, sidebar)
+            make("UICorner", { CornerRadius = UDim.new(0, 6) }, item)
+            make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, item)
+
+            make("TextLabel", {
+                Size            = UDim2.new(1, -12, 0, 22),
+                Position        = UDim2.new(0, 10, 0, 4),
+                BackgroundTransparency = 1,
+                Text            = title,
+                TextColor3      = Theme.Text,
+                Font            = Enum.Font.GothamBold,
+                TextSize        = 11,
+                TextXAlignment  = Enum.TextXAlignment.Left,
+            }, item)
+
+            local subLbl = make("TextLabel", {
+                Size            = UDim2.new(1, -12, 0, 16),
+                Position        = UDim2.new(0, 10, 0, 26),
+                BackgroundTransparency = 1,
+                Text            = sub or "",
+                TextColor3      = Theme.TextDim,
+                Font            = Enum.Font.Code,
+                TextSize        = 9,
+                TextXAlignment  = Enum.TextXAlignment.Left,
+            }, item)
+
+            local lblCtrl = {}
+            function lblCtrl:SetSub(v) subLbl.Text = v end
+            return lblCtrl
+        end
+
+        function sideObj:Avatar()
+            -- Karakter thumbnail URL
+            local userId = LP.UserId
+            local thumbUrl = string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", userId)
+
+            local card = make("Frame", {
+                Size            = UDim2.new(1, 0, 0, 90),
+                BackgroundColor3 = Color3.fromRGB(14, 14, 24),
+                BorderSizePixel = 0,
+                LayoutOrder     = 999,
+            }, sidebar)
+            make("UICorner", { CornerRadius = UDim.new(0, 8) }, card)
+            make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, card)
+
+            -- Avatar resmi
+            local imgFrame = make("Frame", {
+                Size            = UDim2.new(0, 54, 0, 54),
+                Position        = UDim2.new(0.5, -27, 0, 8),
+                BackgroundColor3 = Color3.fromRGB(12,12,20),
+                BorderSizePixel = 0,
+            }, card)
+            make("UICorner", { CornerRadius = UDim.new(0, 8) }, imgFrame)
+            make("UIStroke", { Color = Theme.Accent, Thickness = 1.5, Transparency = 0.5 }, imgFrame)
+
+            local img = make("ImageLabel", {
+                Size            = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                Image           = thumbUrl,
+                ScaleType       = Enum.ScaleType.Crop,
+            }, imgFrame)
+            make("UICorner", { CornerRadius = UDim.new(0, 7) }, img)
+
+            -- Kullanıcı adı
+            make("TextLabel", {
+                Size            = UDim2.new(1, -8, 0, 16),
+                Position        = UDim2.new(0, 4, 1, -20),
+                BackgroundTransparency = 1,
+                Text            = LP.Name,
+                TextColor3      = Theme.Text,
+                Font            = Enum.Font.GothamBold,
+                TextSize        = 10,
+                TextXAlignment  = Enum.TextXAlignment.Center,
+            }, card)
+        end
+
+        function sideObj:Button(label, callback)
+            local btn = make("TextButton", {
+                Size            = UDim2.new(1, 0, 0, 32),
+                BackgroundColor3 = Color3.fromRGB(14, 14, 24),
+                BorderSizePixel = 0,
+                Text            = label,
+                TextColor3      = Theme.Text,
+                Font            = Enum.Font.GothamSemibold,
+                TextSize        = 11,
+                AutoButtonColor = false,
+            }, sidebar)
+            make("UICorner", { CornerRadius = UDim.new(0, 6) }, btn)
+            make("UIStroke", { Color = Theme.Border2, Thickness = 1 }, btn)
+
+            btn.MouseEnter:Connect(function()
+                tween(btn, { TextColor3 = Theme.AccentLight, BackgroundColor3 = Color3.fromRGB(16,14,28) }, 0.15)
+            end)
+            btn.MouseLeave:Connect(function()
+                tween(btn, { TextColor3 = Theme.Text, BackgroundColor3 = Color3.fromRGB(14,14,24) }, 0.15)
+            end)
+            btn.MouseButton1Click:Connect(function()
+                if callback then callback() end
+            end)
+        end
+
+        return sideObj
+    end
+
+    -- ======================================================
+    -- BİLDİRİM
+    -- ======================================================
+    function winObj:Notify(title, message, duration, notifType)
+        duration  = duration  or 3
+        notifType = notifType or "info" -- "info", "success", "warning", "error"
+
+        local accentColor = ({
+            info    = Theme.AccentLight,
+            success = Theme.Success,
+            warning = Theme.Warning,
+            error   = Theme.Error,
+        })[notifType] or Theme.AccentLight
+
+        local notif = make("Frame", {
+            Size            = UDim2.new(1, 0, 0, 64),
+            BackgroundColor3 = Color3.fromRGB(12, 12, 20),
+            BorderSizePixel = 0,
+            BackgroundTransparency = 1,
+            ClipsDescendants = false,
+        }, notifContainer)
+        make("UICorner", { CornerRadius = UDim.new(0, 8) }, notif)
+        make("UIStroke", { Color = Theme.Border, Thickness = 1 }, notif)
+
+        -- Sol renkli bar
+        local bar = make("Frame", {
+            Size            = UDim2.new(0, 3, 1, -12),
+            Position        = UDim2.new(0, 6, 0.5, 0),
+            AnchorPoint     = Vector2.new(0, 0.5),
+            BackgroundColor3 = accentColor,
+            BorderSizePixel = 0,
+        }, notif)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
+
+        -- Başlık
+        make("TextLabel", {
+            Size            = UDim2.new(1, -50, 0, 20),
+            Position        = UDim2.new(0, 18, 0, 10),
+            BackgroundTransparency = 1,
+            Text            = title,
+            TextColor3      = Theme.TextBright,
+            Font            = Enum.Font.GothamBold,
+            TextSize        = 12,
+            TextXAlignment  = Enum.TextXAlignment.Left,
+        }, notif)
+
+        -- Mesaj
+        make("TextLabel", {
+            Size            = UDim2.new(1, -24, 0, 28),
+            Position        = UDim2.new(0, 18, 0, 30),
+            BackgroundTransparency = 1,
+            Text            = message,
+            TextColor3      = Theme.Text,
+            Font            = Enum.Font.Gotham,
+            TextSize        = 11,
+            TextXAlignment  = Enum.TextXAlignment.Left,
+            TextWrapped     = true,
+        }, notif)
+
+        -- Progres çizgisi
+        local progBG = make("Frame", {
+            Size            = UDim2.new(1, -12, 0, 2),
+            Position        = UDim2.new(0, 6, 1, -4),
+            BackgroundColor3 = Theme.Border,
+            BorderSizePixel = 0,
+        }, notif)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, progBG)
+
+        local prog = make("Frame", {
+            Size            = UDim2.new(1, 0, 1, 0),
+            BackgroundColor3 = accentColor,
+            BorderSizePixel = 0,
+        }, progBG)
+        make("UICorner", { CornerRadius = UDim.new(1, 0) }, prog)
+
+        -- Giriş animasyonu
+        notif.Position = UDim2.new(1, 10, 0, 0)
+        tween(notif, { BackgroundTransparency = 0, Position = UDim2.new(0, 0, 0, 0) }, 0.3, Enum.EasingStyle.Back)
+
+        -- Progress tween
+        tween(prog, { Size = UDim2.new(0, 0, 1, 0) }, duration, Enum.EasingStyle.Linear)
+
+        -- Çıkış
+        task.delay(duration, function()
+            tween(notif, { BackgroundTransparency = 1, Position = UDim2.new(1, 10, 0, 0) }, 0.25, Enum.EasingStyle.Quart)
+            task.delay(0.3, function() notif:Destroy() end)
+        end)
+    end
+
+    return winObj
+end
+
+-- ============================================================
+-- Export
+-- ============================================================
+
+return NyxUI
